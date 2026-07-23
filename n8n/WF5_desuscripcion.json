@@ -1,0 +1,187 @@
+{
+  "name": "SMS+Mail Campaña - WF5 Desuscripcion Mail",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "mail-baja/:code",
+        "authentication": "none",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook_baja",
+      "name": "Webhook - Click Desuscribirse",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 120],
+      "webhookId": "mail-baja",
+      "notesInFlow": true,
+      "notes": "Esta es la URL que WF2_envio_mail inyecta en el link 'quiero desuscribirme' (N8N_BASE_URL + /webhook/mail-baja/{codigo}). El GET solo muestra una pagina de confirmacion: la baja real recien se aplica al confirmar, para no procesar como baja los pre-fetch de seguridad de Outlook/Gmail (Safe Links, image proxy, etc.) que visitan el link automaticamente."
+    },
+    {
+      "parameters": {
+        "jsCode": "const code = ($json && $json.params && $json.params.code) ? $json.params.code.toString() : '';\nconst confirmUrl = '/webhook/mail-baja-confirmar/' + encodeURIComponent(code);\nconst html = `<!DOCTYPE html>\n<html lang=\"es\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>DoctoRed - Baja de comunicaciones</title>\n<style>\n  * { box-sizing: border-box; margin: 0; padding: 0; }\n  body { font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: #DEE8D3; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }\n  .card { background: #FFFFFF; border-radius: 24px; padding: 40px 28px; max-width: 380px; width: 100%; text-align: center; box-shadow: 0 12px 40px rgba(65,24,120,0.12); }\n  .brand { color: #411878; font-size: 26px; font-weight: 600; letter-spacing: -0.5px; margin-bottom: 6px; }\n  h1 { color: #411878; font-size: 20px; font-weight: 600; margin-bottom: 12px; }\n  p { color: #411878; opacity: 0.75; font-size: 15px; line-height: 1.5; margin-bottom: 28px; }\n  .btn { display: block; background: #411878; color: #FFFFFF; text-decoration: none; font-size: 17px; font-weight: 600; padding: 16px; border-radius: 14px; }\n</style>\n</head>\n<body>\n  <div class=\"card\">\n    <div class=\"brand\">DoctoRed</div>\n    <h1>¿Querés dejar de recibir estos mails?</h1>\n    <p>Confirmá para no recibir mas comunicaciones de esta campaña.</p>\n    <a class=\"btn\" href=\"${confirmUrl}\">Sí, quiero desuscribirme</a>\n  </div>\n</body>\n</html>`;\nreturn [{ json: { html } }];"
+      },
+      "id": "armar_pagina",
+      "name": "Armar Pagina Confirmacion",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 120]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.html }}",
+        "options": { "responseHeaders": { "entries": [{ "name": "Content-Type", "value": "text/html; charset=utf-8" }] } }
+      },
+      "id": "responder_pagina",
+      "name": "Responder Pagina",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [520, 120]
+    },
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "mail-baja-confirmar/:code",
+        "authentication": "none",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook_confirmar_baja",
+      "name": "Webhook - Confirmar Baja",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 400],
+      "webhookId": "mail-baja-confirmar"
+    },
+    {
+      "parameters": {
+        "jsCode": "const code = ($json && $json.params && $json.params.code) ? $json.params.code.toString() : '';\nconst ua = (($json && $json.headers && ($json.headers['user-agent'] || $json.headers['User-Agent'])) || '').toString().toLowerCase();\nconst botPatterns = ['bot','crawl','spider','preview','facebookexternalhit','curl','wget','python','java/','go-http','okhttp','headless','prefetch','scan','monitor','pingdom','uptime','safelinks','outlook','gmailimageproxy'];\nconst esBot = !ua || !ua.includes('mozilla') || botPatterns.some(p => ua.includes(p));\nreturn [{ json: { codigo: code, esHumano: !esBot } }];"
+      },
+      "id": "parse_code",
+      "name": "Parsear Codigo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 400]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "1", "name": "GOOGLE_SHEET_ID", "type": "string", "value": "REEMPLAZAR - ID del ENVIO_SMS_MAIL_V2 en Google Sheets" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set_config",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [440, 400]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": { "__rl": true, "mode": "id", "value": "={{ $('Config').first().json.GOOGLE_SHEET_ID }}" },
+        "sheetName": { "__rl": true, "mode": "name", "value": "Contactos" },
+        "options": {}
+      },
+      "id": "read_contacts",
+      "name": "Leer Contactos",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [660, 400],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "REEMPLAZAR", "name": "Google Sheets - Quick Camp" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const pc = $('Parsear Codigo').first().json;\nconst normaliza = (v) => (v === undefined || v === null ? '' : v.toString().trim());\nconst match = $input.all().find(item => normaliza(item.json['codigo']) === pc.codigo && pc.codigo !== '');\nconst encontrado = !!match;\nconst marcar = encontrado && pc.esHumano;\nreturn [{ json: { marcar, row_number: match ? match.json.row_number : null } }];"
+      },
+      "id": "find_row",
+      "name": "Buscar Fila",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            { "id": "c1", "leftValue": "={{ $json.marcar }}", "rightValue": true, "operator": { "type": "boolean", "operation": "equals" } }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if_marcar",
+      "name": "¿Marcar baja?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1100, 400]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": { "__rl": true, "mode": "id", "value": "={{ $('Config').first().json.GOOGLE_SHEET_ID }}" },
+        "sheetName": { "__rl": true, "mode": "name", "value": "Contactos" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "matchingColumns": ["row_number"],
+          "value": { "row_number": "={{ $('Buscar Fila').item.json.row_number }}", "desuscripto": "Si" }
+        },
+        "options": {}
+      },
+      "id": "update_baja",
+      "name": "Marcar Desuscripto",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [1320, 300],
+      "notesInFlow": true,
+      "notes": "desuscripto=Si corta todo mail futuro (todas las tandas restantes) para este lead. No afecta el envio de SMS.",
+      "credentials": { "googleSheetsOAuth2Api": { "id": "REEMPLAZAR", "name": "Google Sheets - Quick Camp" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const html = `<!DOCTYPE html>\n<html lang=\"es\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>DoctoRed - Baja confirmada</title>\n<style>\n  * { box-sizing: border-box; margin: 0; padding: 0; }\n  body { font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: #DEE8D3; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }\n  .card { background: #FFFFFF; border-radius: 24px; padding: 40px 28px; max-width: 380px; width: 100%; text-align: center; box-shadow: 0 12px 40px rgba(65,24,120,0.12); }\n  .brand { color: #411878; font-size: 26px; font-weight: 600; margin-bottom: 6px; }\n  h1 { color: #411878; font-size: 20px; font-weight: 600; margin-bottom: 12px; }\n  p { color: #411878; opacity: 0.75; font-size: 15px; line-height: 1.5; }\n</style>\n</head>\n<body>\n  <div class=\"card\">\n    <div class=\"brand\">DoctoRed</div>\n    <h1>Listo, ya no vas a recibir estos mails</h1>\n    <p>Tu baja fue procesada correctamente.</p>\n  </div>\n</body>\n</html>`;\nreturn [{ json: { html } }];"
+      },
+      "id": "armar_pagina_final",
+      "name": "Armar Pagina Final",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1540, 400],
+      "notesInFlow": true,
+      "notes": "Se muestra el mismo mensaje encontrado el codigo o no, para no revelar si un codigo/lead existe."
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.html }}",
+        "options": { "responseHeaders": { "entries": [{ "name": "Content-Type", "value": "text/html; charset=utf-8" }] } }
+      },
+      "id": "responder_pagina_final",
+      "name": "Responder Pagina Final",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1760, 400]
+    }
+  ],
+  "connections": {
+    "Webhook - Click Desuscribirse": { "main": [[{ "node": "Armar Pagina Confirmacion", "type": "main", "index": 0 }]] },
+    "Armar Pagina Confirmacion": { "main": [[{ "node": "Responder Pagina", "type": "main", "index": 0 }]] },
+    "Webhook - Confirmar Baja": { "main": [[{ "node": "Parsear Codigo", "type": "main", "index": 0 }]] },
+    "Parsear Codigo": { "main": [[{ "node": "Config", "type": "main", "index": 0 }]] },
+    "Config": { "main": [[{ "node": "Leer Contactos", "type": "main", "index": 0 }]] },
+    "Leer Contactos": { "main": [[{ "node": "Buscar Fila", "type": "main", "index": 0 }]] },
+    "Buscar Fila": { "main": [[{ "node": "¿Marcar baja?", "type": "main", "index": 0 }]] },
+    "¿Marcar baja?": {
+      "main": [
+        [{ "node": "Marcar Desuscripto", "type": "main", "index": 0 }],
+        [{ "node": "Armar Pagina Final", "type": "main", "index": 0 }]
+      ]
+    },
+    "Marcar Desuscripto": { "main": [[{ "node": "Armar Pagina Final", "type": "main", "index": 0 }]] },
+    "Armar Pagina Final": { "main": [[{ "node": "Responder Pagina Final", "type": "main", "index": 0 }]] }
+  }
+}

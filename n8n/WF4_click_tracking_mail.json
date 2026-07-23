@@ -1,0 +1,171 @@
+{
+  "name": "SMS+Mail Campaña - WF4 Click Tracking Mail",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "mail-click/:code",
+        "authentication": "none",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook_click_mail",
+      "name": "Webhook - Click CTA Mail",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 120],
+      "webhookId": "mail-click",
+      "notesInFlow": true,
+      "notes": "Esta es la URL que WF2_envio_mail inyecta en el boton CTA de los templates (N8N_BASE_URL + /webhook/mail-click/{codigo}-{tanda})."
+    },
+    {
+      "parameters": {
+        "jsCode": "const code = ($json && $json.params && $json.params.code) ? $json.params.code.toString() : '';\nconst confirmUrl = '/webhook/mail-click-confirmar/' + encodeURIComponent(code);\nconst html = `<!DOCTYPE html>\n<html lang=\"es\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>DoctoRed</title>\n<style>\n  * { box-sizing: border-box; margin: 0; padding: 0; }\n  body { font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: #DEE8D3; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }\n  .card { background: #FFFFFF; border-radius: 24px; padding: 40px 28px; max-width: 380px; width: 100%; text-align: center; box-shadow: 0 12px 40px rgba(65,24,120,0.12); }\n  .brand { color: #411878; font-size: 26px; font-weight: 600; letter-spacing: -0.5px; margin-bottom: 6px; }\n  h1 { color: #411878; font-size: 20px; font-weight: 600; margin-bottom: 12px; }\n  p { color: #411878; opacity: 0.75; font-size: 15px; line-height: 1.5; margin-bottom: 28px; }\n  .btn { display: block; background: #411878; color: #FFFFFF; text-decoration: none; font-size: 17px; font-weight: 600; padding: 16px; border-radius: 14px; }\n</style>\n</head>\n<body>\n  <div class=\"card\">\n    <div class=\"brand\">DoctoRed</div>\n    <h1>Estás a un paso</h1>\n    <p>Tocá el botón para continuar.</p>\n    <a class=\"btn\" href=\"${confirmUrl}\">Continuar</a>\n  </div>\n</body>\n</html>`;\nreturn [{ json: { html } }];"
+      },
+      "id": "armar_pagina",
+      "name": "Armar Pagina Intermedia",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 120]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.html }}",
+        "options": { "responseHeaders": { "entries": [{ "name": "Content-Type", "value": "text/html; charset=utf-8" }] } }
+      },
+      "id": "responder_pagina",
+      "name": "Responder Pagina",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [520, 120]
+    },
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "mail-click-confirmar/:code",
+        "authentication": "none",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook_confirmar_mail",
+      "name": "Webhook - Confirmar Mail",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 400],
+      "webhookId": "mail-confirmar"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = ($json && $json.params && $json.params.code) ? $json.params.code.toString() : '';\nconst ua = (($json && $json.headers && ($json.headers['user-agent'] || $json.headers['User-Agent'])) || '').toString().toLowerCase();\nconst idx = raw.lastIndexOf('-');\nlet baseCode = raw;\nlet wave = 1;\nif (idx > -1) {\n  baseCode = raw.slice(0, idx);\n  const w = parseInt(raw.slice(idx + 1), 10);\n  if (!isNaN(w)) wave = w;\n}\nconst botPatterns = ['bot','crawl','spider','preview','facebookexternalhit','googlemessages','telegram','slack','discord','curl','wget','python','java/','go-http','okhttp','headless','prefetch','scan','monitor','pingdom','uptime','safelinks','outlook','gmailimageproxy','skype','line/','viber','twitterbot'];\nconst esBot = !ua || !ua.includes('mozilla') || botPatterns.some(p => ua.includes(p));\nconst esHumano = !esBot;\nreturn [{ json: { baseCode, wave, ua, esHumano } }];"
+      },
+      "id": "parse_code",
+      "name": "Parsear Codigo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 400],
+      "notesInFlow": true,
+      "notes": "Incluye 'safelinks'/'outlook'/'gmailimageproxy' en la lista de patrones de bot: los proveedores de mail suelen pre-visitar los links por seguridad, y eso no debe contar como click real."
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "1", "name": "GOOGLE_SHEET_ID", "type": "string", "value": "REEMPLAZAR - ID del ENVIO_SMS_MAIL_V2 en Google Sheets" },
+            { "id": "2", "name": "LINK_DESTINO_MAIL", "type": "string", "value": "https://www.doctored.com.ar/?utm_source=Mail&utm_medium=email&utm_campaign=Recontacto" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set_config",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [440, 400]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": { "__rl": true, "mode": "id", "value": "={{ $('Config').first().json.GOOGLE_SHEET_ID }}" },
+        "sheetName": { "__rl": true, "mode": "name", "value": "Contactos" },
+        "options": {}
+      },
+      "id": "read_contacts",
+      "name": "Leer Contactos",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [660, 400],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "REEMPLAZAR", "name": "Google Sheets - Quick Camp" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const pc = $('Parsear Codigo').first().json;\nconst baseCode = (pc.baseCode || '').toString().trim();\nconst wave = pc.wave;\nconst esHumano = pc.esHumano;\nconst normaliza = (v) => (v === undefined || v === null ? '' : v.toString().trim());\nconst match = $input.all().find(item => normaliza(item.json['codigo']) === baseCode && baseCode !== '');\nconst encontrado = !!match;\nconst marcar = encontrado && esHumano;\nconst out = { encontrado, esHumano, marcar, row_number: match ? match.json.row_number : null, wave, baseCode, destino: $('Config').first().json.LINK_DESTINO_MAIL };\nif (marcar) {\n  // EmailClick{wave} con timestamp -> corta las tandas de mail siguientes para este lead.\n  out['EmailClick' + wave] = new Date().toISOString().slice(0, 19).replace('T', ' ');\n}\nreturn [{ json: out }];"
+      },
+      "id": "find_row",
+      "name": "Buscar Fila",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            { "id": "c1", "leftValue": "={{ $json.marcar }}", "rightValue": true, "operator": { "type": "boolean", "operation": "equals" } }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if_found",
+      "name": "¿Marcar click?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1100, 400]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": { "__rl": true, "mode": "id", "value": "={{ $('Config').first().json.GOOGLE_SHEET_ID }}" },
+        "sheetName": { "__rl": true, "mode": "name", "value": "Contactos" },
+        "columns": { "mappingMode": "autoMapInputData", "matchingColumns": ["row_number"], "value": {} },
+        "options": {}
+      },
+      "id": "update_click",
+      "name": "Marcar Click Mail",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [1320, 300],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "REEMPLAZAR", "name": "Google Sheets - Quick Camp" } }
+    },
+    {
+      "parameters": {
+        "respondWith": "redirect",
+        "redirectURL": "={{ $('Buscar Fila').first().json.destino }}",
+        "options": {}
+      },
+      "id": "respond_redirect",
+      "name": "Redirigir a destino final",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1540, 400]
+    }
+  ],
+  "connections": {
+    "Webhook - Click CTA Mail": { "main": [[{ "node": "Armar Pagina Intermedia", "type": "main", "index": 0 }]] },
+    "Armar Pagina Intermedia": { "main": [[{ "node": "Responder Pagina", "type": "main", "index": 0 }]] },
+    "Webhook - Confirmar Mail": { "main": [[{ "node": "Parsear Codigo", "type": "main", "index": 0 }]] },
+    "Parsear Codigo": { "main": [[{ "node": "Config", "type": "main", "index": 0 }]] },
+    "Config": { "main": [[{ "node": "Leer Contactos", "type": "main", "index": 0 }]] },
+    "Leer Contactos": { "main": [[{ "node": "Buscar Fila", "type": "main", "index": 0 }]] },
+    "Buscar Fila": { "main": [[{ "node": "¿Marcar click?", "type": "main", "index": 0 }]] },
+    "¿Marcar click?": {
+      "main": [
+        [{ "node": "Marcar Click Mail", "type": "main", "index": 0 }],
+        [{ "node": "Redirigir a destino final", "type": "main", "index": 0 }]
+      ]
+    },
+    "Marcar Click Mail": { "main": [[{ "node": "Redirigir a destino final", "type": "main", "index": 0 }]] }
+  }
+}

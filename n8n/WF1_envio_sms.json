@@ -1,0 +1,272 @@
+{
+  "name": "SMS+Mail Campaña - WF1 Envio SMS (generico por tandas)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "quick-camp-mail-iniciar",
+        "authentication": "headerAuth",
+        "responseMode": "onReceived",
+        "responseData": "{\"status\":\"recibido, procesando envios\"}",
+        "options": {}
+      },
+      "id": "webhook_trigger",
+      "name": "Webhook - Boton Iniciar Campaña",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 200],
+      "webhookId": "quick-camp-mail-iniciar",
+      "credentials": { "httpHeaderAuth": { "id": "REEMPLAZAR", "name": "Quick Camp Mail Webhook Secret" } }
+    },
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "*/15 * * * *" }] }
+      },
+      "id": "schedule_trigger",
+      "name": "Schedule cada 15 min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 400],
+      "notesInFlow": true,
+      "notes": "Corre todas las tandas configuradas en 'Plantillas', no solo la 1. El disparo manual (boton) solo adelanta la primera corrida, esta corrida periodica es la que sostiene la campaña."
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "1", "name": "GOOGLE_SHEET_ID", "type": "string", "value": "REEMPLAZAR - ID del ENVIO_SMS_MAIL_V2 en Google Sheets" },
+            { "id": "2", "name": "TWILIO_ACCOUNT_SID", "type": "string", "value": "REEMPLAZAR - mismo Account SID que usa quickcampaign_sms" },
+            { "id": "3", "name": "TWILIO_FROM", "type": "string", "value": "REEMPLAZAR - mismo numero remitente que usa quickcampaign_sms" },
+            { "id": "4", "name": "N8N_BASE_URL", "type": "string", "value": "https://devn8n.gruporoisa.com.ar" },
+            { "id": "5", "name": "SHORTLINK_BASE", "type": "string", "value": "https://yutiypy.s.gy/doctoredVentas" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set_config",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [220, 300]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": { "__rl": true, "mode": "id", "value": "={{ $json.GOOGLE_SHEET_ID }}" },
+        "sheetName": { "__rl": true, "mode": "name", "value": "Control_Data" },
+        "options": {}
+      },
+      "id": "read_control_data",
+      "name": "Leer Estado Campaña",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [440, 300],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "REEMPLAZAR", "name": "Google Sheets - Quick Camp" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(i => i.json);\nconst estado = (rows.find(r => r.clave === 'Estado_Campana') || {}).valor || 'Pausada';\nconst activa = estado.toString().trim().toLowerCase() === 'activa';\nreturn [{ json: { estadoCampana: estado, activa } }];"
+      },
+      "id": "check_estado",
+      "name": "Chequear Estado Campaña",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [660, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            { "id": "c1", "leftValue": "={{ $json.activa }}", "rightValue": true, "operator": { "type": "boolean", "operation": "equals" } }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if_activa",
+      "name": "¿Campaña Activa?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [880, 300]
+    },
+    {
+      "parameters": {},
+      "id": "noop_pausada",
+      "name": "Campaña Pausada - No enviar",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1100, 460]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": { "__rl": true, "mode": "id", "value": "={{ $('Config').first().json.GOOGLE_SHEET_ID }}" },
+        "sheetName": { "__rl": true, "mode": "name", "value": "Plantillas" },
+        "options": {}
+      },
+      "id": "read_templates",
+      "name": "Leer Plantillas",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [1100, 200],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "REEMPLAZAR", "name": "Google Sheets - Quick Camp" } }
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": { "__rl": true, "mode": "id", "value": "={{ $('Config').first().json.GOOGLE_SHEET_ID }}" },
+        "sheetName": { "__rl": true, "mode": "name", "value": "Contactos" },
+        "options": {}
+      },
+      "id": "read_contacts",
+      "name": "Leer Contactos",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [1320, 200],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "REEMPLAZAR", "name": "Google Sheets - Quick Camp" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "function diffHoras(fechaStr) {\n  if (!fechaStr) return Infinity;\n  const f = new Date(fechaStr.toString().replace(' ', 'T'));\n  if (isNaN(f.getTime())) return Infinity;\n  return (Date.now() - f.getTime()) / 3600000;\n}\n\nconst tandas = $('Leer Plantillas').all().map(i => i.json).sort((a, b) => Number(a.tanda) - Number(b.tanda));\n\nconst out = [];\nfor (const item of $input.all()) {\n  const j = item.json;\n  if ((j['desuscripto'] || '').toString().trim().toLowerCase() === 'si') continue;\n\n  for (const t of tandas) {\n    const n = Number(t.tanda);\n    const envioN = (j['Envio' + n] || '').toString().trim();\n    if (envioN !== '') continue; // ya se proceso esta tanda (Si o No)\n\n    if (n > 1) {\n      const envioPrev = (j['Envio' + (n - 1)] || '').toString().trim();\n      const clickPrev = (j['Click' + (n - 1)] || '').toString().trim();\n      const delayHoras = Number(t['delay_sms_horas'] || 24);\n      if (envioPrev !== 'Si') break;       // todavia no se le mando la tanda anterior\n      if (clickPrev !== '') break;         // clickeo el shortlink anterior -> corta tandas SMS siguientes\n      if (diffHoras(j['FechaEnvio' + (n - 1)]) < delayHoras) break; // no paso el intervalo minimo\n    }\n\n    out.push({\n      json: {\n        row_number: j.row_number,\n        telefono: j['telefono'],\n        nombre: j['nombre'] || '',\n        codigo: j['codigo'] || '',\n        tanda: n,\n        mensaje_sms: t['mensaje_sms'],\n        destino_sms: t['destino_sms']\n      }\n    });\n    break; // como mucho 1 tanda por corrida por lead\n  }\n}\nreturn out;"
+      },
+      "id": "filter_candidatos",
+      "name": "Generar candidatos por tanda",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1540, 200]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "function codigoAleatorio(len) {\n  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';\n  let s = '';\n  for (let i = 0; i < len; i++) s += chars[Math.floor(Math.random() * chars.length)];\n  return s;\n}\nfunction normalizarTelefonoAR(raw) {\n  let t = (raw || '').toString().replace(/[^0-9+]/g, '');\n  if (!t.startsWith('+')) { t = t.startsWith('54') ? '+' + t : '+54' + t; }\n  if (t.startsWith('+54') && !t.startsWith('+549')) t = '+549' + t.slice(3);\n  return t;\n}\n\nconst j = $json;\nconst config = $('Config').first().json;\nconst codigo = j.codigo || codigoAleatorio(8); // se genera solo en tanda 1, se reutiliza despues\nconst shortlink = `${config.SHORTLINK_BASE}/${codigo}-${j.tanda}`;\nconst nombre = j.nombre ? j.nombre : '';\nlet texto = (j.mensaje_sms || '').replace(/{{\\s*nombre\\s*}}/gi, nombre).replace(/{{\\s*link\\s*}}/gi, shortlink);\ntexto = texto.replace(/\\s{2,}/g, ' ').trim();\n\nreturn { json: { row_number: j.row_number, tanda: j.tanda, codigo, telefono_normalizado: normalizarTelefonoAR(j.telefono), mensaje: texto } };"
+      },
+      "id": "build_message",
+      "name": "Generar Codigo y Mensaje",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1760, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.twilio.com/2010-04-01/Accounts/{{ $('Config').first().json.TWILIO_ACCOUNT_SID }}/Messages.json",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            { "name": "To", "value": "={{ $json.telefono_normalizado }}" },
+            { "name": "From", "value": "={{ $('Config').first().json.TWILIO_FROM }}" },
+            { "name": "Body", "value": "={{ $json.mensaje }}" }
+          ]
+        },
+        "options": { "response": { "response": { "neverError": true } } }
+      },
+      "id": "twilio_send",
+      "name": "Twilio - Enviar SMS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1980, 200],
+      "credentials": { "httpBasicAuth": { "id": "REEMPLAZAR", "name": "Twilio Basic Auth (SID + Auth Token)" } }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            { "id": "c1", "leftValue": "={{ $json.sid }}", "rightValue": "", "operator": { "type": "string", "operation": "notEmpty" } }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if_success",
+      "name": "Envio OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [2200, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "const j = $('Generar Codigo y Mensaje').item.json;\nconst n = j.tanda;\nconst out = { row_number: j.row_number, codigo: j.codigo };\nout['Envio' + n] = 'Si';\nout['FechaEnvio' + n] = new Date().toISOString().slice(0, 19).replace('T', ' ');\nreturn [{ json: out }];"
+      },
+      "id": "prep_update_ok",
+      "name": "Preparar Update - Exito",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2420, 100]
+    },
+    {
+      "parameters": {
+        "jsCode": "const j = $('Generar Codigo y Mensaje').item.json;\nconst n = j.tanda;\nconst out = { row_number: j.row_number };\nout['Envio' + n] = 'No';\nreturn [{ json: out }];"
+      },
+      "id": "prep_update_fail",
+      "name": "Preparar Update - Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2420, 320]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": { "__rl": true, "mode": "id", "value": "={{ $('Config').first().json.GOOGLE_SHEET_ID }}" },
+        "sheetName": { "__rl": true, "mode": "name", "value": "Contactos" },
+        "columns": { "mappingMode": "autoMapInputData", "matchingColumns": ["row_number"], "value": {} },
+        "options": {}
+      },
+      "id": "update_success",
+      "name": "Actualizar fila - Exito",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [2640, 100],
+      "notesInFlow": true,
+      "notes": "autoMapInputData: los nombres de columna (Envio{N}, FechaEnvio{N}) se computan dinamicamente en el Code node anterior segun la tanda.",
+      "credentials": { "googleSheetsOAuth2Api": { "id": "REEMPLAZAR", "name": "Google Sheets - Quick Camp" } }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": { "__rl": true, "mode": "id", "value": "={{ $('Config').first().json.GOOGLE_SHEET_ID }}" },
+        "sheetName": { "__rl": true, "mode": "name", "value": "Contactos" },
+        "columns": { "mappingMode": "autoMapInputData", "matchingColumns": ["row_number"], "value": {} },
+        "options": {}
+      },
+      "id": "update_fail",
+      "name": "Actualizar fila - Error",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [2640, 320],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "REEMPLAZAR", "name": "Google Sheets - Quick Camp" } }
+    }
+  ],
+  "connections": {
+    "Webhook - Boton Iniciar Campaña": { "main": [[{ "node": "Config", "type": "main", "index": 0 }]] },
+    "Schedule cada 15 min": { "main": [[{ "node": "Config", "type": "main", "index": 0 }]] },
+    "Config": { "main": [[{ "node": "Leer Estado Campaña", "type": "main", "index": 0 }]] },
+    "Leer Estado Campaña": { "main": [[{ "node": "Chequear Estado Campaña", "type": "main", "index": 0 }]] },
+    "Chequear Estado Campaña": { "main": [[{ "node": "¿Campaña Activa?", "type": "main", "index": 0 }]] },
+    "¿Campaña Activa?": {
+      "main": [
+        [
+          { "node": "Leer Plantillas", "type": "main", "index": 0 },
+          { "node": "Leer Contactos", "type": "main", "index": 0 }
+        ],
+        [{ "node": "Campaña Pausada - No enviar", "type": "main", "index": 0 }]
+      ]
+    },
+    "Leer Contactos": { "main": [[{ "node": "Generar candidatos por tanda", "type": "main", "index": 0 }]] },
+    "Generar candidatos por tanda": { "main": [[{ "node": "Generar Codigo y Mensaje", "type": "main", "index": 0 }]] },
+    "Generar Codigo y Mensaje": { "main": [[{ "node": "Twilio - Enviar SMS", "type": "main", "index": 0 }]] },
+    "Twilio - Enviar SMS": { "main": [[{ "node": "Envio OK?", "type": "main", "index": 0 }]] },
+    "Envio OK?": {
+      "main": [
+        [{ "node": "Preparar Update - Exito", "type": "main", "index": 0 }],
+        [{ "node": "Preparar Update - Error", "type": "main", "index": 0 }]
+      ]
+    },
+    "Preparar Update - Exito": { "main": [[{ "node": "Actualizar fila - Exito", "type": "main", "index": 0 }]] },
+    "Preparar Update - Error": { "main": [[{ "node": "Actualizar fila - Error", "type": "main", "index": 0 }]] }
+  }
+}

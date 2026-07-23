@@ -1,0 +1,269 @@
+{
+  "name": "SMS+Mail Campaña - WF2 Envio Mail (30 min despues del SMS)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "*/10 * * * *" }] }
+      },
+      "id": "schedule_trigger",
+      "name": "Schedule cada 10 min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "1", "name": "GOOGLE_SHEET_ID", "type": "string", "value": "REEMPLAZAR - ID del ENVIO_SMS_MAIL_V2 en Google Sheets" },
+            { "id": "2", "name": "N8N_BASE_URL", "type": "string", "value": "https://devn8n.gruporoisa.com.ar" },
+            { "id": "3", "name": "TEMPLATES_DIR", "type": "string", "value": "REEMPLAZAR - carpeta accesible por n8n con plantilla_alta.html/plantilla_media.html/plantilla_baja.html" },
+            { "id": "4", "name": "MAIL_FROM", "type": "string", "value": "ventasdoctored@doctored.com.ar" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set_config",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [220, 300],
+      "notesInFlow": true,
+      "notes": "TEMPLATES_DIR debe ser accesible por el proceso de n8n (mismo host o volumen montado). Si n8n corre en otro servidor, reemplazar 'Leer Template HTML' por un HTTP Request a donde esten hosteados los .html."
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": { "__rl": true, "mode": "id", "value": "={{ $json.GOOGLE_SHEET_ID }}" },
+        "sheetName": { "__rl": true, "mode": "name", "value": "Control_Data" },
+        "options": {}
+      },
+      "id": "read_control_data",
+      "name": "Leer Estado Campaña",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [440, 300],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "REEMPLAZAR", "name": "Google Sheets - Quick Camp" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(i => i.json);\nconst estado = (rows.find(r => r.clave === 'Estado_Campana') || {}).valor || 'Pausada';\nconst activa = estado.toString().trim().toLowerCase() === 'activa';\nreturn [{ json: { estadoCampana: estado, activa } }];"
+      },
+      "id": "check_estado",
+      "name": "Chequear Estado Campaña",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [660, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            { "id": "c1", "leftValue": "={{ $json.activa }}", "rightValue": true, "operator": { "type": "boolean", "operation": "equals" } }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if_activa",
+      "name": "¿Campaña Activa?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [880, 300]
+    },
+    {
+      "parameters": {},
+      "id": "noop_pausada",
+      "name": "Campaña Pausada - No enviar",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1100, 500]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": { "__rl": true, "mode": "id", "value": "={{ $('Config').first().json.GOOGLE_SHEET_ID }}" },
+        "sheetName": { "__rl": true, "mode": "name", "value": "Plantillas" },
+        "options": {}
+      },
+      "id": "read_plantillas",
+      "name": "Leer Plantillas",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [1100, 160],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "REEMPLAZAR", "name": "Google Sheets - Quick Camp" } }
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": { "__rl": true, "mode": "id", "value": "={{ $('Config').first().json.GOOGLE_SHEET_ID }}" },
+        "sheetName": { "__rl": true, "mode": "name", "value": "Plantillas_Mail" },
+        "options": {}
+      },
+      "id": "read_plantillas_mail",
+      "name": "Leer Plantillas_Mail",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [1100, 260],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "REEMPLAZAR", "name": "Google Sheets - Quick Camp" } }
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": { "__rl": true, "mode": "id", "value": "={{ $('Config').first().json.GOOGLE_SHEET_ID }}" },
+        "sheetName": { "__rl": true, "mode": "name", "value": "Contactos" },
+        "options": {}
+      },
+      "id": "read_contacts",
+      "name": "Leer Contactos",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [1100, 360],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "REEMPLAZAR", "name": "Google Sheets - Quick Camp" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "function diffMin(fechaStr) {\n  if (!fechaStr) return -1;\n  const f = new Date(fechaStr.toString().replace(' ', 'T'));\n  if (isNaN(f.getTime())) return -1;\n  return (Date.now() - f.getTime()) / 60000;\n}\n\nconst tandas = $('Leer Plantillas').all().map(i => i.json).sort((a, b) => Number(a.tanda) - Number(b.tanda));\n// Plantillas_Mail esta vinculada a la tanda (no al lead): cada tanda define que .html usar.\nconst plantillasMail = $('Leer Plantillas_Mail').all().map(i => i.json);\n\nconst out = [];\nfor (const item of $input.all()) {\n  const j = item.json;\n  if ((j['desuscripto'] || '').toString().trim().toLowerCase() === 'si') continue;\n  if (!j.email) continue;\n\n  for (const t of tandas) {\n    const n = Number(t.tanda);\n    const envioN = (j['Envio' + n] || '').toString().trim();\n    const emailEnvioN = (j['EmailEnvio' + n] || '').toString().trim();\n    if (envioN !== 'Si') continue;      // el SMS de esta tanda no se mando (o fallo)\n    if (emailEnvioN !== '') continue;   // el mail de esta tanda ya se envio\n\n    const delayMin = Number(t['delay_mail_min'] || 30);\n    if (diffMin(j['FechaEnvio' + n]) < delayMin) continue; // no paso la ventana de espera\n\n    const plantillaMail = plantillasMail.find(p => Number(p.tanda) === n);\n    if (!plantillaMail || !plantillaMail.archivo_template) continue; // tanda sin template de mail configurado -> no se envia\n\n    out.push({\n      json: {\n        row_number: j.row_number,\n        nombre: j.nombre || '',\n        email: j.email,\n        codigo: j.codigo,\n        tanda: n,\n        archivo_template: plantillaMail.archivo_template\n      }\n    });\n    break; // 1 mail por corrida por lead; las tandas restantes se procesan en la proxima corrida\n  }\n}\nreturn out;"
+      },
+      "id": "filter_candidatos_mail",
+      "name": "Generar candidatos mail",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, 300]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "fileSelector": "={{ $('Config').first().json.TEMPLATES_DIR }}/{{ $json.archivo_template }}"
+      },
+      "id": "read_template_file",
+      "name": "Leer Template HTML",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [1540, 300],
+      "notesInFlow": true,
+      "notes": "Lee el .html en disco. Requiere que n8n tenga acceso al filesystem donde estan plantilla_alta/media/baja.html."
+    },
+    {
+      "parameters": {
+        "operation": "text",
+        "binaryPropertyName": "data"
+      },
+      "id": "extract_template_text",
+      "name": "Extraer Texto Template",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [1760, 300]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const j = $json;\nconst n8nBase = $('Config').first().json.N8N_BASE_URL;\nconst unsubUrl = `${n8nBase}/webhook/mail-baja/${j.codigo}`;\nconst clickUrl = `${n8nBase}/webhook/mail-click/${j.codigo}-${j.tanda}`;\n\nlet html = j.text || j.data || '';\nhtml = html.replace(/\\[email\\]/g, j.email);\n// Reemplaza el href del link \"quiero desuscribirme\" (identificado por su id fijo en el template).\nhtml = html.replace(/(href=\")[^\"]*(\"[^>]*id=\"unlayer-custom-tool-footer-unsubscribe-link\")/, `$1${unsubUrl}$2`);\n// Reemplaza el href del boton CTA principal (identificado por su clase fija en el template).\nhtml = html.replace(/(href=\")[^\"]*(\"[^>]*class=\"v-button\")/, `$1${clickUrl}$2`);\n\nreturn { json: { row_number: j.row_number, tanda: j.tanda, email: j.email, html } };"
+      },
+      "id": "armar_mail",
+      "name": "Armar Mail (placeholders + tracking)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1980, 300],
+      "notesInFlow": true,
+      "notes": "El matching de 'class=\"v-button\"' y del id de desuscripcion depende del markup actual de plantilla_alta/media/baja.html. Revisar si se edita el diseño del template en el editor de mails."
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $('Config').first().json.MAIL_FROM }}",
+        "toEmail": "={{ $json.email }}",
+        "subject": "En DoctoRED queremos ayudarte a encontrar tu plan ideal",
+        "html": "={{ $json.html }}",
+        "options": {}
+      },
+      "id": "send_mail",
+      "name": "Enviar Mail (SMTP doctored.dyndns.org)",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [2200, 300],
+      "credentials": { "smtp": { "id": "REEMPLAZAR", "name": "SMTP doctored.dyndns.org" } }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            { "id": "c1", "leftValue": "={{ $json.messageId }}", "rightValue": "", "operator": { "type": "string", "operation": "notEmpty" } }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if_mail_success",
+      "name": "Envio Mail OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [2420, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const j = $('Armar Mail (placeholders + tracking)').item.json;\nconst n = j.tanda;\nconst out = { row_number: j.row_number };\nout['EmailEnvio' + n] = new Date().toISOString().slice(0, 19).replace('T', ' ');\nreturn [{ json: out }];"
+      },
+      "id": "prep_update_mail_ok",
+      "name": "Preparar Update - Exito",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2640, 220]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": { "__rl": true, "mode": "id", "value": "={{ $('Config').first().json.GOOGLE_SHEET_ID }}" },
+        "sheetName": { "__rl": true, "mode": "name", "value": "Contactos" },
+        "columns": { "mappingMode": "autoMapInputData", "matchingColumns": ["row_number"], "value": {} },
+        "options": {}
+      },
+      "id": "update_success",
+      "name": "Actualizar fila - Exito",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [2860, 220],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "REEMPLAZAR", "name": "Google Sheets - Quick Camp" } }
+    },
+    {
+      "parameters": {},
+      "id": "noop_mail_fail",
+      "name": "No marcar - reintenta proxima corrida",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [2640, 400],
+      "notesInFlow": true,
+      "notes": "No se escribe EmailEnvio{N}: al quedar vacio, la proxima corrida de este mismo workflow lo vuelve a intentar."
+    }
+  ],
+  "connections": {
+    "Schedule cada 10 min": { "main": [[{ "node": "Config", "type": "main", "index": 0 }]] },
+    "Config": { "main": [[{ "node": "Leer Estado Campaña", "type": "main", "index": 0 }]] },
+    "Leer Estado Campaña": { "main": [[{ "node": "Chequear Estado Campaña", "type": "main", "index": 0 }]] },
+    "Chequear Estado Campaña": { "main": [[{ "node": "¿Campaña Activa?", "type": "main", "index": 0 }]] },
+    "¿Campaña Activa?": {
+      "main": [
+        [
+          { "node": "Leer Plantillas", "type": "main", "index": 0 },
+          { "node": "Leer Plantillas_Mail", "type": "main", "index": 0 },
+          { "node": "Leer Contactos", "type": "main", "index": 0 }
+        ],
+        [{ "node": "Campaña Pausada - No enviar", "type": "main", "index": 0 }]
+      ]
+    },
+    "Leer Contactos": { "main": [[{ "node": "Generar candidatos mail", "type": "main", "index": 0 }]] },
+    "Generar candidatos mail": { "main": [[{ "node": "Leer Template HTML", "type": "main", "index": 0 }]] },
+    "Leer Template HTML": { "main": [[{ "node": "Extraer Texto Template", "type": "main", "index": 0 }]] },
+    "Extraer Texto Template": { "main": [[{ "node": "Armar Mail (placeholders + tracking)", "type": "main", "index": 0 }]] },
+    "Armar Mail (placeholders + tracking)": { "main": [[{ "node": "Enviar Mail (SMTP doctored.dyndns.org)", "type": "main", "index": 0 }]] },
+    "Enviar Mail (SMTP doctored.dyndns.org)": { "main": [[{ "node": "Envio Mail OK?", "type": "main", "index": 0 }]] },
+    "Envio Mail OK?": {
+      "main": [
+        [{ "node": "Preparar Update - Exito", "type": "main", "index": 0 }],
+        [{ "node": "No marcar - reintenta proxima corrida", "type": "main", "index": 0 }]
+      ]
+    },
+    "Preparar Update - Exito": { "main": [[{ "node": "Actualizar fila - Exito", "type": "main", "index": 0 }]] }
+  }
+}

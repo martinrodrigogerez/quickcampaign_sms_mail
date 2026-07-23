@@ -1,0 +1,195 @@
+{
+  "name": "SMS+Mail Campaña - WF3 Click Tracking SMS",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "sms-click/:code",
+        "authentication": "none",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook_click",
+      "name": "Webhook - Click Shortlink",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 120],
+      "webhookId": "sms-click",
+      "notesInFlow": true,
+      "notes": "Path distinto al WF3 de quickcampaign_sms (que usa ':code' a nivel raiz) para poder tener los dos proyectos activos en la misma instancia de n8n sin que choquen. Si el WF3 viejo se da de baja, este cambio es opcional. IMPORTANTE: el shortlink externo (SHORTLINK_BASE, hoy yutiypy.s.gy/doctoredVentas) debe redirigir a /webhook/sms-click/{codigo}-{tanda}, no a la ruta vieja."
+    },
+    {
+      "parameters": {
+        "jsCode": "const code = ($json && $json.params && $json.params.code) ? $json.params.code.toString() : '';\nconst confirmUrl = '/webhook/sms-click-confirmar/' + encodeURIComponent(code);\nconst html = `<!DOCTYPE html>\n<html lang=\"es\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>DoctoRed</title>\n<style>\n  * { box-sizing: border-box; margin: 0; padding: 0; }\n  body { font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: #DEE8D3; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }\n  .card { background: #FFFFFF; border-radius: 24px; padding: 40px 28px; max-width: 380px; width: 100%; text-align: center; box-shadow: 0 12px 40px rgba(65,24,120,0.12); }\n  .brand { color: #411878; font-size: 26px; font-weight: 600; letter-spacing: -0.5px; margin-bottom: 6px; }\n  .claim { color: #6D40A5; font-size: 14px; margin-bottom: 28px; }\n  h1 { color: #411878; font-size: 20px; font-weight: 600; margin-bottom: 12px; }\n  p { color: #411878; opacity: 0.75; font-size: 15px; line-height: 1.5; margin-bottom: 28px; }\n  .btn { display: block; background: #411878; color: #FFFFFF; text-decoration: none; font-size: 17px; font-weight: 600; padding: 16px; border-radius: 14px; }\n  .btn:active { background: #6D40A5; }\n</style>\n</head>\n<body>\n  <div class=\"card\">\n    <div class=\"brand\">DoctoRed</div>\n    <div class=\"claim\">Tu plan de salud.</div>\n    <h1>Estás a un paso</h1>\n    <p>Tocá el botón y seguí la conversación con nuestro equipo.</p>\n    <a class=\"btn\" href=\"${confirmUrl}\">Continuar</a>\n  </div>\n</body>\n</html>`;\nreturn [{ json: { html } }];"
+      },
+      "id": "armar_pagina",
+      "name": "Armar Pagina Intermedia",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 120]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.html }}",
+        "options": { "responseHeaders": { "entries": [{ "name": "Content-Type", "value": "text/html; charset=utf-8" }] } }
+      },
+      "id": "responder_pagina",
+      "name": "Responder Pagina",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [520, 120]
+    },
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "sms-click-confirmar/:code",
+        "authentication": "none",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook_confirmar",
+      "name": "Webhook - Confirmar",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 400],
+      "webhookId": "sms-click-confirmar"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = ($json && $json.params && $json.params.code) ? $json.params.code.toString() : '';\nconst ua = (($json && $json.headers && ($json.headers['user-agent'] || $json.headers['User-Agent'])) || '').toString().toLowerCase();\nconst idx = raw.lastIndexOf('-');\nlet baseCode = raw;\nlet wave = 1;\nif (idx > -1) {\n  baseCode = raw.slice(0, idx);\n  const w = parseInt(raw.slice(idx + 1), 10);\n  if (!isNaN(w)) wave = w;\n}\nconst botPatterns = ['bot','crawl','spider','preview','facebookexternalhit','googlemessages','telegram','slack','discord','curl','wget','python','java/','go-http','okhttp','headless','prefetch','scan','monitor','pingdom','uptime','shortio','short.io','skype','line/','viber','twitterbot'];\nconst esBot = !ua || !ua.includes('mozilla') || botPatterns.some(p => ua.includes(p));\nconst esHumano = !esBot;\nreturn [{ json: { baseCode, wave, ua, esHumano } }];"
+      },
+      "id": "parse_code",
+      "name": "Parsear Codigo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 400]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "1", "name": "GOOGLE_SHEET_ID", "type": "string", "value": "REEMPLAZAR - ID del ENVIO_SMS_MAIL_V2 en Google Sheets" },
+            { "id": "2", "name": "LINK_DESTINO", "type": "string", "value": "https://api.whatsapp.com/send/?phone=5491140933608&text=Hola%21%20Quisiera%20informaci%C3%B3n%20sobre%20los%20planes%20de%20DoctoRED.&type=phone_number&app_absent=0" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set_config",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [440, 400]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": { "__rl": true, "mode": "id", "value": "={{ $('Config').first().json.GOOGLE_SHEET_ID }}" },
+        "sheetName": { "__rl": true, "mode": "name", "value": "Contactos" },
+        "options": {}
+      },
+      "id": "read_contacts",
+      "name": "Leer Contactos",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [660, 400],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "REEMPLAZAR", "name": "Google Sheets - Quick Camp" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const pc = $('Parsear Codigo').first().json;\nconst baseCode = (pc.baseCode || '').toString().trim();\nconst wave = pc.wave;\nconst esHumano = pc.esHumano;\nconst normaliza = (v) => (v === undefined || v === null ? '' : v.toString().trim());\nconst match = $input.all().find(item => normaliza(item.json['codigo']) === baseCode && baseCode !== '');\nconst encontrado = !!match;\nconst marcar = encontrado && esHumano;\nconst out = { encontrado, esHumano, marcar, row_number: match ? match.json.row_number : null, wave, baseCode };\nif (marcar) {\n  // Correccion: Click{wave} guarda el timestamp del click (antes guardaba 'Si').\n  out['Click' + wave] = new Date().toISOString().slice(0, 19).replace('T', ' ');\n}\nreturn [{ json: out }];"
+      },
+      "id": "find_row",
+      "name": "Buscar Fila",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 400]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": { "__rl": true, "mode": "id", "value": "={{ $('Config').first().json.GOOGLE_SHEET_ID }}" },
+        "sheetName": { "__rl": true, "mode": "name", "value": "Plantillas" },
+        "options": {}
+      },
+      "id": "read_templates",
+      "name": "Leer Plantillas",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [1100, 400],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "REEMPLAZAR", "name": "Google Sheets - Quick Camp" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const wave = $('Parsear Codigo').first().json.wave;\nconst plantillas = $input.all().map(i => i.json);\nconst fila = plantillas.find(p => Number(p.tanda) === Number(wave));\nlet destino = fila ? (fila['destino_sms'] || '').toString().trim() : '';\nif (!destino) {\n  destino = $('Config').first().json.LINK_DESTINO;\n}\nconst previo = $('Buscar Fila').first().json;\nreturn [{ json: { ...previo, destino } }];"
+      },
+      "id": "calc_destino",
+      "name": "Calcular Destino",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            { "id": "c1", "leftValue": "={{ $json.marcar }}", "rightValue": true, "operator": { "type": "boolean", "operation": "equals" } }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if_found",
+      "name": "¿Marcar click?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1540, 400]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": { "__rl": true, "mode": "id", "value": "={{ $('Config').first().json.GOOGLE_SHEET_ID }}" },
+        "sheetName": { "__rl": true, "mode": "name", "value": "Contactos" },
+        "columns": { "mappingMode": "autoMapInputData", "matchingColumns": ["row_number"], "value": {} },
+        "options": {}
+      },
+      "id": "update_click",
+      "name": "Marcar Click",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [1760, 300],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "REEMPLAZAR", "name": "Google Sheets - Quick Camp" } }
+    },
+    {
+      "parameters": {
+        "respondWith": "redirect",
+        "redirectURL": "={{ $('Calcular Destino').first().json.destino }}",
+        "options": {}
+      },
+      "id": "respond_redirect",
+      "name": "Redirigir a destino final",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1980, 400]
+    }
+  ],
+  "connections": {
+    "Webhook - Click Shortlink": { "main": [[{ "node": "Armar Pagina Intermedia", "type": "main", "index": 0 }]] },
+    "Armar Pagina Intermedia": { "main": [[{ "node": "Responder Pagina", "type": "main", "index": 0 }]] },
+    "Webhook - Confirmar": { "main": [[{ "node": "Parsear Codigo", "type": "main", "index": 0 }]] },
+    "Parsear Codigo": { "main": [[{ "node": "Config", "type": "main", "index": 0 }]] },
+    "Config": { "main": [[{ "node": "Leer Contactos", "type": "main", "index": 0 }]] },
+    "Leer Contactos": { "main": [[{ "node": "Buscar Fila", "type": "main", "index": 0 }]] },
+    "Buscar Fila": { "main": [[{ "node": "Leer Plantillas", "type": "main", "index": 0 }]] },
+    "Leer Plantillas": { "main": [[{ "node": "Calcular Destino", "type": "main", "index": 0 }]] },
+    "Calcular Destino": { "main": [[{ "node": "¿Marcar click?", "type": "main", "index": 0 }]] },
+    "¿Marcar click?": {
+      "main": [
+        [{ "node": "Marcar Click", "type": "main", "index": 0 }],
+        [{ "node": "Redirigir a destino final", "type": "main", "index": 0 }]
+      ]
+    },
+    "Marcar Click": { "main": [[{ "node": "Redirigir a destino final", "type": "main", "index": 0 }]] }
+  }
+}

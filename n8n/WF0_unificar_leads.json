@@ -1,0 +1,106 @@
+{
+  "name": "SMS+Mail Campaña - WF0 Unificar Leads",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual_trigger",
+      "name": "Manual - Ejecutar Unificacion",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 300],
+      "notesInFlow": true,
+      "notes": "On-demand: correrlo cada vez que se quiera incorporar leads nuevos de las 2 fuentes al sheet de campaña."
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "1", "name": "SHEET_INSTITUCIONAL_ID", "type": "string", "value": "1FXRthiLA2ut1SUkZZBECc7SZK6LCkB6mFct_98F4vnY" },
+            { "id": "2", "name": "SHEET_META_ID", "type": "string", "value": "1runPllSwWDbTcBncap9GVbZcIEaOYZhdzeS8Z-vLQa8" },
+            { "id": "3", "name": "GOOGLE_SHEET_ID", "type": "string", "value": "REEMPLAZAR - ID del ENVIO_SMS_MAIL_V2 en Google Sheets" },
+            { "id": "4", "name": "SHEET_INSTITUCIONAL_HOJA", "type": "string", "value": "Leads" },
+            { "id": "5", "name": "SHEET_META_HOJA", "type": "string", "value": "Leads" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set_config",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [220, 300],
+      "notesInFlow": true,
+      "notes": "Ajustar SHEET_INSTITUCIONAL_HOJA / SHEET_META_HOJA al nombre real de la pestaña con datos en cada sheet de origen."
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": { "__rl": true, "mode": "id", "value": "={{ $json.SHEET_INSTITUCIONAL_ID }}" },
+        "sheetName": { "__rl": true, "mode": "name", "value": "={{ $json.SHEET_INSTITUCIONAL_HOJA }}" },
+        "options": {}
+      },
+      "id": "read_institucional",
+      "name": "Leer Leads Institucional",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [440, 200],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "REEMPLAZAR", "name": "Google Sheets - Quick Camp" } }
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": { "__rl": true, "mode": "id", "value": "={{ $('Config').item.json.SHEET_META_ID }}" },
+        "sheetName": { "__rl": true, "mode": "name", "value": "={{ $('Config').item.json.SHEET_META_HOJA }}" },
+        "options": {}
+      },
+      "id": "read_meta",
+      "name": "Leer Leads Meta",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [440, 400],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "REEMPLAZAR", "name": "Google Sheets - Quick Camp" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "function normalizarTelefonoAR(raw) {\n  let t = (raw || '').toString().replace(/[^0-9+]/g, '');\n  if (!t.startsWith('+')) { t = t.startsWith('54') ? '+' + t : '+54' + t; }\n  if (t.startsWith('+54') && !t.startsWith('+549')) t = '+549' + t.slice(3);\n  return t;\n}\nfunction normalizarEmail(raw) {\n  return (raw || '').toString().trim().toLowerCase();\n}\nfunction pick(obj, keys) {\n  for (const k of keys) { if (obj[k] !== undefined && obj[k] !== null && obj[k] !== '') return obj[k]; }\n  return '';\n}\n\n// 'Leer Leads Institucional' llega como input principal de este nodo; 'Leer Leads Meta' se referencia aparte.\nconst institucional = $input.all().map(item => ({ raw: item.json, fuente: 'institucional' }));\nconst meta = $('Leer Leads Meta').all().map(item => ({ raw: item.json, fuente: 'meta' }));\n\nconst porTelefono = new Map();\nfor (const { raw, fuente } of [...institucional, ...meta]) {\n  const telefono = normalizarTelefonoAR(pick(raw, ['telefono', 'Telefono', 'phone', 'Phone']));\n  if (!telefono || telefono.replace(/\\D/g, '').length < 8) continue; // descarta filas sin telefono valido\n\n  const email = normalizarEmail(pick(raw, ['email', 'Email', 'mail', 'Mail']));\n  const nombre = pick(raw, ['nombre', 'Nombre', 'name', 'Name']).toString().trim();\n\n  const existente = porTelefono.get(telefono);\n  if (!existente) {\n    porTelefono.set(telefono, { telefono, nombre, email, fuente });\n  } else if (fuente === 'institucional') {\n    // Prioridad: Institucional pisa datos de Meta si el telefono se repite en ambas fuentes.\n    existente.nombre = nombre || existente.nombre;\n    existente.email = email || existente.email;\n    existente.fuente = 'institucional';\n  } else {\n    existente.nombre = existente.nombre || nombre;\n    existente.email = existente.email || email;\n  }\n}\n\nreturn Array.from(porTelefono.values()).map(j => ({ json: j }));"
+      },
+      "id": "unificar_dedupe",
+      "name": "Normalizar y Unificar (dedupe por telefono)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [660, 300]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": { "__rl": true, "mode": "id", "value": "={{ $('Config').first().json.GOOGLE_SHEET_ID }}" },
+        "sheetName": { "__rl": true, "mode": "name", "value": "Contactos" },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "matchingColumns": ["telefono"],
+          "value": {}
+        },
+        "options": {}
+      },
+      "id": "write_contactos",
+      "name": "Escribir Contactos (upsert por telefono)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [880, 300],
+      "notesInFlow": true,
+      "notes": "appendOrUpdate con matchingColumns=telefono: si el lead ya existia en Contactos (de una corrida anterior) no lo duplica ni le pisa las columnas de tandas, solo nombre/email/fuente.",
+      "credentials": { "googleSheetsOAuth2Api": { "id": "REEMPLAZAR", "name": "Google Sheets - Quick Camp" } }
+    }
+  ],
+  "connections": {
+    "Manual - Ejecutar Unificacion": { "main": [[{ "node": "Config", "type": "main", "index": 0 }]] },
+    "Config": {
+      "main": [[
+        { "node": "Leer Leads Institucional", "type": "main", "index": 0 },
+        { "node": "Leer Leads Meta", "type": "main", "index": 0 }
+      ]]
+    },
+    "Leer Leads Institucional": { "main": [[{ "node": "Normalizar y Unificar (dedupe por telefono)", "type": "main", "index": 0 }]] },
+    "Normalizar y Unificar (dedupe por telefono)": { "main": [[{ "node": "Escribir Contactos (upsert por telefono)", "type": "main", "index": 0 }]] }
+  }
+}
